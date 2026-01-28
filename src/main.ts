@@ -78,6 +78,57 @@ function parseYouTubeLabel(url: string): string {
   }
 }
 
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    if (host === 'youtu.be') {
+      const id = u.pathname.replace(/^\//, '')
+      return id || null
+    }
+    if (host.endsWith('youtube.com')) {
+      const v = u.searchParams.get('v')
+      if (v) return v
+      // Shorts: /shorts/<id>
+      const m = u.pathname.match(/^\/shorts\/([^/?#]+)/)
+      if (m?.[1]) return m[1]
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+type YouTubeOEmbed = {
+  title: string
+  thumbnail_url: string
+}
+
+async function fetchYouTubeMeta(url: string): Promise<{ title?: string; thumbUrl?: string; videoId?: string }> {
+  const videoId = extractYouTubeVideoId(url)
+  const watchUrl = videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : url
+
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(watchUrl)}`
+    )
+    if (!res.ok) return { videoId: videoId || undefined }
+    const data = (await res.json()) as Partial<YouTubeOEmbed>
+    const title = typeof data.title === 'string' ? data.title.trim() : ''
+    const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
+    return {
+      title: title || undefined,
+      thumbUrl: thumbUrl || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : undefined),
+      videoId: videoId || undefined
+    }
+  } catch {
+    return {
+      thumbUrl: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : undefined,
+      videoId: videoId || undefined
+    }
+  }
+}
+
 function findUser(doc: Doc, username: string): User | undefined {
   return doc.users.find((u) => u.username === username)
 }
@@ -169,8 +220,9 @@ function render(): void {
                     .map(
                       (p, idx) => `
                         <div class="item">
+                          ${p.thumbUrl ? `<img class="thumb" src="${esc(p.thumbUrl)}" alt="" loading="lazy" />` : `<div class="thumb thumbFallback"></div>`}
                           <div class="itemMain">
-                            <div class="itemTitle">${esc(parseYouTubeLabel(p.url))}</div>
+                            <div class="itemTitle">${esc(p.title || parseYouTubeLabel(p.url))}</div>
                             <div class="itemMeta">
                               <a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a>
                             </div>
@@ -316,27 +368,40 @@ appEl.addEventListener('click', (e) => {
       return
     }
 
-    const playlist: Playlist = {
-      url,
-      note: note || undefined,
-      addedAt: new Date().toISOString()
-    }
+    state.loading = true
+    render()
 
-    void saveWithMerge((doc) => {
-      const u = findUser(doc, state.session!.username)
-      if (!u) {
-        doc.users.push({ username: state.session!.username, pin: state.session!.pin, playlists: [playlist] })
-        return
-      }
-      if (u.pin !== state.session!.pin) {
-        throw new Error('Pin mismatch for this user')
-      }
-      u.playlists.push(playlist)
-    }).then(() => {
-      if (urlInput) urlInput.value = ''
-      if (noteInput) noteInput.value = ''
-      render()
-    })
+    void fetchYouTubeMeta(url)
+      .then((meta) => {
+        const playlist: Playlist = {
+          url,
+          title: meta.title,
+          thumbUrl: meta.thumbUrl,
+          videoId: meta.videoId,
+          note: note || undefined,
+          addedAt: new Date().toISOString()
+        }
+
+        return saveWithMerge((doc) => {
+          const u = findUser(doc, state.session!.username)
+          if (!u) {
+            doc.users.push({ username: state.session!.username, pin: state.session!.pin, playlists: [playlist] })
+            return
+          }
+          if (u.pin !== state.session!.pin) {
+            throw new Error('Pin mismatch for this user')
+          }
+          u.playlists.push(playlist)
+        })
+      })
+      .then(() => {
+        if (urlInput) urlInput.value = ''
+        if (noteInput) noteInput.value = ''
+      })
+      .finally(() => {
+        state.loading = false
+        render()
+      })
     return
   }
 

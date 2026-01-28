@@ -204,6 +204,24 @@ input:focus {
   justify-content: space-between;
 }
 
+.thumb {
+  width: 92px;
+  height: 52px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.thumbFallback {
+  background:
+    radial-gradient(22px 22px at 30% 30%, rgba(255, 209, 102, 0.22), transparent 60%),
+    radial-gradient(24px 24px at 70% 60%, rgba(76, 201, 240, 0.22), transparent 60%),
+    rgba(255, 255, 255, 0.06);
+}
+
 .itemMain {
   min-width: 0;
 }

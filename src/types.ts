@@ -1,5 +1,8 @@
 export type Playlist = {
   url: string
+  title?: string
+  thumbUrl?: string
+  videoId?: string
   note?: string
   addedAt: string
 }
