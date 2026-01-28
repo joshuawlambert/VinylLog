@@ -34,8 +34,11 @@ jobs:
 
       - name: Build
         env:
-          VITE_JSONBIN_BIN_ID: ${{ secrets.JSONBIN_BIN_ID }}
-          VITE_JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
+          # Support either secret naming convention:
+          # - JSONBIN_BIN_ID / JSONBIN_MASTER_KEY
+          # - VITE_JSONBIN_BIN_ID / VITE_JSONBIN_MASTER_KEY
+          VITE_JSONBIN_BIN_ID: ${{ secrets.VITE_JSONBIN_BIN_ID || secrets.JSONBIN_BIN_ID }}
+          VITE_JSONBIN_MASTER_KEY: ${{ secrets.VITE_JSONBIN_MASTER_KEY || secrets.JSONBIN_MASTER_KEY }}
           BASE_PATH: /${{ github.event.repository.name }}/
         run: bun run build
 
