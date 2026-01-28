@@ -17,12 +17,14 @@ const state: {
   error: string | null
   session: Session | null
   toast: string | null
+  expandedKey: string | null
 } = {
   doc: null,
   loading: false,
   error: null,
   session: null,
-  toast: null
+  toast: null,
+  expandedKey: null
 }
 
 function sleep(ms: number): Promise<void> {
@@ -133,6 +135,10 @@ function findUser(doc: Doc, username: string): User | undefined {
   return doc.users.find((u) => u.username === username)
 }
 
+function playlistKey(p: { url: string; addedAt: string }): string {
+  return `${p.addedAt}|${p.url}`
+}
+
 async function refreshDoc(): Promise<void> {
   state.loading = true
   state.error = null
@@ -218,7 +224,11 @@ function render(): void {
                     .slice()
                     .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
                     .map(
-                      (p, idx) => `
+                      (p) => {
+                        const key = playlistKey(p)
+                        const videoId = p.videoId || extractYouTubeVideoId(p.url) || ''
+                        const expanded = state.expandedKey === key
+                        return `
                         <div class="item">
                           ${p.thumbUrl ? `<img class="thumb" src="${esc(p.thumbUrl)}" alt="" loading="lazy" />` : `<div class="thumb thumbFallback"></div>`}
                           <div class="itemMain">
@@ -227,13 +237,26 @@ function render(): void {
                               <a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a>
                             </div>
                             ${p.note ? `<div class="itemMeta">${esc(p.note)}</div>` : ''}
+                            ${expanded && videoId ? `
+                              <div class="embedWrap">
+                                <iframe
+                                  src="https://www.youtube-nocookie.com/embed/${esc(videoId)}?rel=0&modestbranding=1"
+                                  title="YouTube video player"
+                                  loading="lazy"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                  allowfullscreen
+                                ></iframe>
+                              </div>
+                            ` : ''}
                             <div class="itemMeta">Added ${esc(new Date(p.addedAt).toLocaleString())}</div>
                           </div>
                           <div class="row">
-                            <button class="btn btnDanger" data-action="remove" data-idx="${idx}" ${state.loading ? 'disabled' : ''}>Remove</button>
+                            ${videoId ? `<button class="btn" data-action="toggle-embed" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>${expanded ? 'Hide' : 'Watch'}</button>` : ''}
+                            <button class="btn btnDanger" data-action="remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Remove</button>
                           </div>
                         </div>
                       `
+                      }
                     )
                     .join('')}
                 </div>
@@ -405,10 +428,21 @@ appEl.addEventListener('click', (e) => {
     return
   }
 
+  if (action === 'toggle-embed') {
+    const addedAt = el.getAttribute('data-added-at') || ''
+    const url = el.getAttribute('data-url') || ''
+    if (!addedAt || !url) return
+
+    const key = `${addedAt}|${url}`
+    state.expandedKey = state.expandedKey === key ? null : key
+    render()
+    return
+  }
+
   if (action === 'remove') {
-    const idxRaw = el.getAttribute('data-idx')
-    const idx = idxRaw ? Number(idxRaw) : NaN
-    if (!Number.isFinite(idx)) return
+    const addedAt = el.getAttribute('data-added-at') || ''
+    const url = el.getAttribute('data-url') || ''
+    if (!addedAt || !url) return
     if (!state.session) return
 
     void saveWithMerge((doc) => {
@@ -417,8 +451,14 @@ appEl.addEventListener('click', (e) => {
       if (u.pin !== state.session!.pin) {
         throw new Error('Pin mismatch for this user')
       }
+      const idx = u.playlists.findIndex((p) => p.addedAt === addedAt && p.url === url)
+      if (idx < 0) return
       u.playlists.splice(idx, 1)
     })
+      .then(() => {
+        const key = `${addedAt}|${url}`
+        if (state.expandedKey === key) state.expandedKey = null
+      })
     return
   }
 
