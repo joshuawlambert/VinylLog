@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   build:
+    # Needed if you store secrets as Environment secrets (not Repo secrets)
+    environment:
+      name: github-pages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
