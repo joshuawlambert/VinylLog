@@ -19,6 +19,7 @@ const state: {
   toast: string | null
   expandedKey: string | null
   confirmDeleteKey: string | null
+  searchQuery: string
 } = {
   doc: null,
   loading: false,
@@ -26,7 +27,8 @@ const state: {
   session: null,
   toast: null,
   expandedKey: null,
-  confirmDeleteKey: null
+  confirmDeleteKey: null,
+  searchQuery: ''
 }
 
 function sleep(ms: number): Promise<void> {
@@ -221,12 +223,36 @@ function render(): void {
               ` : ''}
 
               ${doc && session && signedInUser ? `
+                <div class="searchWrap">
+                  <input
+                    class="searchInput"
+                    data-field="search"
+                    type="text"
+                    placeholder="Search your collection..."
+                    value="${esc(state.searchQuery)}"
+                  />
+                  ${state.searchQuery ? `<button class="searchClear" data-action="clear-search" title="Clear search">&times;</button>` : ''}
+                </div>
                 <div class="list">
                   ${signedInUser.playlists.length === 0 ? `<div class="muted">No playlists yet. Add your first link.</div>` : ''}
-                  ${signedInUser.playlists
-                    .slice()
-                    .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
-                    .map(
+                  ${(() => {
+                    const query = state.searchQuery.toLowerCase().trim()
+                    const filtered = signedInUser.playlists
+                      .slice()
+                      .filter((p) => {
+                        if (!query) return true
+                        const title = (p.title || '').toLowerCase()
+                        const note = (p.note || '').toLowerCase()
+                        const url = p.url.toLowerCase()
+                        return title.includes(query) || note.includes(query) || url.includes(query)
+                      })
+                      .sort((a, b) => b.addedAt.localeCompare(a.addedAt))
+                    
+                    if (query && filtered.length === 0) {
+                      return `<div class="muted">No results for "${esc(state.searchQuery)}"</div>`
+                    }
+                    
+                    return filtered.map(
                       (p) => {
                         const key = playlistKey(p)
                         const videoId = p.videoId || extractYouTubeVideoId(p.url) || ''
@@ -265,8 +291,8 @@ function render(): void {
                         </div>
                       `
                       }
-                    )
-                    .join('')}
+                    ).join('')
+                  })()}
                 </div>
               ` : ''}
 
@@ -499,6 +525,22 @@ appEl.addEventListener('click', (e) => {
     a.click()
     URL.revokeObjectURL(a.href)
     showToast('Exported')
+    return
+  }
+
+  if (action === 'clear-search') {
+    state.searchQuery = ''
+    render()
+    return
+  }
+})
+
+// Search input handler
+appEl.addEventListener('input', (e) => {
+  const target = e.target as HTMLInputElement | null
+  if (target?.getAttribute('data-field') === 'search') {
+    state.searchQuery = target.value
+    render()
   }
 })
 
