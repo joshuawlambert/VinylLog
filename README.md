@@ -1,4 +1,4 @@
-# VinlyLog
+# VinylLog
 
 Tiny vinyl social app (GitHub Pages) backed by JSONBin.
 

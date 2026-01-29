@@ -331,7 +331,7 @@ function render(): void {
     <div class="wrap">
       <div class="top">
         <div class="brand">
-          <div class="logo">VinlyLog</div>
+          <div class="logo">VinylLog</div>
           <div class="tag">vinyl shelves + YouTube links</div>
         </div>
         <div class="row topActions">
@@ -654,7 +654,7 @@ appEl.addEventListener('click', (e) => {
     const blob = new Blob([json], { type: 'application/json' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `vinlylog-export-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `vinyllog-export-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(a.href)
     showToast('Exported')
