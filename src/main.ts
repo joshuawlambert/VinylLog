@@ -195,7 +195,7 @@ function render(): void {
           <div class="logo">VinlyLog</div>
           <div class="tag">vinyl shelves + YouTube links</div>
         </div>
-        <div class="row">
+        <div class="row topActions">
           ${session ? `<span class="pill">Signed in as <strong>${esc(session.username)}</strong></span>` : ''}
           <button class="btn" data-action="refresh" ${state.loading ? 'disabled' : ''}>Refresh</button>
           ${session ? `<button class="btn" data-action="logout">Sign out</button>` : ''}
@@ -250,7 +250,7 @@ function render(): void {
                             ` : ''}
                             <div class="itemMeta">Added ${esc(new Date(p.addedAt).toLocaleString())}</div>
                           </div>
-                          <div class="row">
+                          <div class="row itemActions">
                             ${videoId ? `<button class="btn" data-action="toggle-embed" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>${expanded ? 'Hide' : 'Watch'}</button>` : ''}
                             <button class="btn btnDanger" data-action="remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Remove</button>
                           </div>
@@ -296,7 +296,7 @@ function render(): void {
                   <label>Note (optional)</label>
                   <input data-field="note" placeholder="Pressing from 1977, thrift find…" />
                   <div style="height: 12px"></div>
-                  <div class="row">
+                  <div class="row formActions">
                     <button class="btn btnPrimary" data-action="add" ${state.loading ? 'disabled' : ''}>Add to my list</button>
                     <button class="btn" data-action="export" ${state.loading ? 'disabled' : ''}>Export JSON</button>
                   </div>
