@@ -424,7 +424,7 @@ function render(): void {
         <div class="panelInner">
           <div class="grid">
             <div>
-              <div class="h2">Your Playlists</div>
+              <div class="h2">Your Vinyl</div>
 
               ${state.error ? `<div class="err">${esc(state.error)}</div><div class="hr"></div>` : ''}
 
