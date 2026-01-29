@@ -216,9 +216,63 @@ function spotifyEmbedUrl(url: string): { embedUrl?: string; embedHeight?: number
 function appleEmbedUrl(url: string): { embedUrl?: string; embedHeight?: number } {
   try {
     const u = new URL(url)
-    if (u.hostname.replace(/^www\./, '') !== 'music.apple.com') return {}
+    const host = u.hostname.replace(/^www\./, '')
+    if (!host.endsWith('music.apple.com')) return {}
     u.hostname = 'embed.music.apple.com'
     return { embedUrl: u.toString(), embedHeight: 150 }
+  } catch {
+    return {}
+  }
+}
+
+function parseAppleStorefrontAndId(url: string): { storefront?: string; id?: string } {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    if (!host.endsWith('music.apple.com')) return {}
+    const parts = u.pathname.split('/').filter(Boolean)
+    const storefront = parts[0]
+    const last = parts[parts.length - 1] || ''
+    const id = /^\d+$/.test(last) ? last : undefined
+    return {
+      storefront: storefront && /^[a-z]{2}$/i.test(storefront) ? storefront.toLowerCase() : undefined,
+      id
+    }
+  } catch {
+    return {}
+  }
+}
+
+async function fetchAppleITunesMeta(url: string): Promise<{ title?: string; thumbUrl?: string }> {
+  const { storefront, id } = parseAppleStorefrontAndId(url)
+  if (!id) return {}
+
+  const country = storefront || 'us'
+  try {
+    const res = await fetch(`https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&country=${encodeURIComponent(country)}`)
+    if (!res.ok) return {}
+    const data = (await res.json()) as unknown
+    if (!data || typeof data !== 'object') return {}
+    const results = (data as { results?: unknown }).results
+    if (!Array.isArray(results) || results.length === 0) return {}
+    const top = results[0] as Record<string, unknown>
+    const collectionName = typeof top.collectionName === 'string' ? top.collectionName.trim() : ''
+    const trackName = typeof top.trackName === 'string' ? top.trackName.trim() : ''
+    const artistName = typeof top.artistName === 'string' ? top.artistName.trim() : ''
+    const artworkUrl100 = typeof top.artworkUrl100 === 'string' ? top.artworkUrl100.trim() : ''
+
+    const titleBase = collectionName || trackName
+    const title = titleBase && artistName ? `${titleBase} - ${artistName}` : titleBase
+
+    // Upscale artwork when possible (Apple typically uses {w}x{h}bb.jpg)
+    const thumbUrl = artworkUrl100
+      ? artworkUrl100.replace(/\d+x\d+bb\.jpg$/i, '600x600bb.jpg')
+      : ''
+
+    return {
+      title: title || undefined,
+      thumbUrl: thumbUrl || undefined
+    }
   } catch {
     return {}
   }
@@ -269,20 +323,25 @@ async function fetchLinkMeta(url: string): Promise<{
     const { embedUrl, embedHeight } = appleEmbedUrl(url)
     try {
       const res = await fetch(`https://embed.music.apple.com/oembed?url=${encodeURIComponent(url)}`)
-      if (!res.ok) return { provider, embedUrl, embedHeight }
+      if (!res.ok) {
+        const itunes = await fetchAppleITunesMeta(url)
+        return { provider, title: itunes.title, thumbUrl: itunes.thumbUrl, embedUrl, embedHeight }
+      }
       const data = (await res.json()) as GenericOEmbed
       const title = typeof data.title === 'string' ? data.title.trim() : ''
       const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
       const oembed = parseOEmbedIframe(data.html)
+      const itunes = (!title || !thumbUrl) ? await fetchAppleITunesMeta(url) : {}
       return {
         provider,
-        title: title || undefined,
-        thumbUrl: thumbUrl || undefined,
+        title: title || itunes.title || undefined,
+        thumbUrl: thumbUrl || itunes.thumbUrl || undefined,
         embedUrl: oembed.src || embedUrl,
         embedHeight: oembed.height || embedHeight
       }
     } catch {
-      return { provider, embedUrl, embedHeight }
+      const itunes = await fetchAppleITunesMeta(url)
+      return { provider, title: itunes.title, thumbUrl: itunes.thumbUrl, embedUrl, embedHeight }
     }
   }
 
