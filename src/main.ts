@@ -18,13 +18,15 @@ const state: {
   session: Session | null
   toast: string | null
   expandedKey: string | null
+  confirmDeleteKey: string | null
 } = {
   doc: null,
   loading: false,
   error: null,
   session: null,
   toast: null,
-  expandedKey: null
+  expandedKey: null,
+  confirmDeleteKey: null
 }
 
 function sleep(ms: number): Promise<void> {
@@ -132,7 +134,8 @@ async function fetchYouTubeMeta(url: string): Promise<{ title?: string; thumbUrl
 }
 
 function findUser(doc: Doc, username: string): User | undefined {
-  return doc.users.find((u) => u.username === username)
+  const lowerUsername = username.toLowerCase()
+  return doc.users.find((u) => u.username.toLowerCase() === lowerUsername)
 }
 
 function playlistKey(p: { url: string; addedAt: string }): string {
@@ -252,7 +255,12 @@ function render(): void {
                           </div>
                           <div class="row itemActions">
                             ${videoId ? `<button class="btn" data-action="toggle-embed" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>${expanded ? 'Hide' : 'Watch'}</button>` : ''}
-                            <button class="btn btnDanger" data-action="remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Remove</button>
+                            ${state.confirmDeleteKey === key ? `
+                              <button class="btn btnDanger" data-action="confirm-remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Confirm</button>
+                              <button class="btn" data-action="cancel-remove" ${state.loading ? 'disabled' : ''}>Cancel</button>
+                            ` : `
+                              <button class="btn btnDanger" data-action="remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Remove</button>
+                            `}
                           </div>
                         </div>
                       `
@@ -443,7 +451,26 @@ appEl.addEventListener('click', (e) => {
     const addedAt = el.getAttribute('data-added-at') || ''
     const url = el.getAttribute('data-url') || ''
     if (!addedAt || !url) return
+
+    const key = `${addedAt}|${url}`
+    state.confirmDeleteKey = key
+    render()
+    return
+  }
+
+  if (action === 'cancel-remove') {
+    state.confirmDeleteKey = null
+    render()
+    return
+  }
+
+  if (action === 'confirm-remove') {
+    const addedAt = el.getAttribute('data-added-at') || ''
+    const url = el.getAttribute('data-url') || ''
+    if (!addedAt || !url) return
     if (!state.session) return
+
+    state.confirmDeleteKey = null
 
     void saveWithMerge((doc) => {
       const u = findUser(doc, state.session!.username)
