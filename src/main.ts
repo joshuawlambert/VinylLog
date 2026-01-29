@@ -84,6 +84,19 @@ function parseYouTubeLabel(url: string): string {
   }
 }
 
+function parseLinkLabel(url: string): string {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+    if (host.endsWith('youtube.com') || host === 'youtu.be') return parseYouTubeLabel(url)
+    if (host === 'open.spotify.com') return 'Spotify'
+    if (host.endsWith('music.apple.com') || host === 'music.apple.com') return 'Apple Music'
+    return host
+  } catch {
+    return 'Link'
+  }
+}
+
 function extractYouTubeVideoId(url: string): string | null {
   try {
     const u = new URL(url)
@@ -133,6 +146,127 @@ async function fetchYouTubeMeta(url: string): Promise<{ title?: string; thumbUrl
       videoId: videoId || undefined
     }
   }
+}
+
+type GenericOEmbed = {
+  title?: string
+  thumbnail_url?: string
+}
+
+function detectProvider(url: string): { provider: 'youtube' | 'spotify' | 'apple' | 'link'; spotifyType?: string } {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.replace(/^www\./, '')
+
+    if (host.endsWith('youtube.com') || host === 'youtu.be') return { provider: 'youtube' }
+    if (host === 'open.spotify.com') {
+      const parts = u.pathname.split('/').filter(Boolean)
+      const t = parts[0]
+      return { provider: 'spotify', spotifyType: t }
+    }
+    if (host === 'music.apple.com') return { provider: 'apple' }
+    return { provider: 'link' }
+  } catch {
+    return { provider: 'link' }
+  }
+}
+
+function spotifyEmbedHeight(spotifyType: string | undefined): number {
+  // Spotify embeds commonly use 152 (track/episode) or 352 (playlist/album/show/artist)
+  if (!spotifyType) return 352
+  if (spotifyType === 'track' || spotifyType === 'episode') return 152
+  return 352
+}
+
+function spotifyEmbedUrl(url: string): { embedUrl?: string; embedHeight?: number } {
+  try {
+    const u = new URL(url)
+    if (u.hostname.replace(/^www\./, '') !== 'open.spotify.com') return {}
+    const parts = u.pathname.split('/').filter(Boolean)
+    const type = parts[0]
+    const id = parts[1]
+    if (!type || !id) return {}
+    return {
+      embedUrl: `https://open.spotify.com/embed/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
+      embedHeight: spotifyEmbedHeight(type)
+    }
+  } catch {
+    return {}
+  }
+}
+
+function appleEmbedUrl(url: string): { embedUrl?: string; embedHeight?: number } {
+  try {
+    const u = new URL(url)
+    if (u.hostname.replace(/^www\./, '') !== 'music.apple.com') return {}
+    u.hostname = 'embed.music.apple.com'
+    return { embedUrl: u.toString(), embedHeight: 150 }
+  } catch {
+    return {}
+  }
+}
+
+async function fetchLinkMeta(url: string): Promise<{
+  provider: 'youtube' | 'spotify' | 'apple' | 'link'
+  title?: string
+  thumbUrl?: string
+  videoId?: string
+  embedUrl?: string
+  embedHeight?: number
+}> {
+  const { provider, spotifyType } = detectProvider(url)
+
+  if (provider === 'youtube') {
+    const meta = await fetchYouTubeMeta(url)
+    return {
+      provider,
+      title: meta.title,
+      thumbUrl: meta.thumbUrl,
+      videoId: meta.videoId
+    }
+  }
+
+  if (provider === 'spotify') {
+    const { embedUrl, embedHeight } = spotifyEmbedUrl(url)
+    try {
+      const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`)
+      if (!res.ok) return { provider, embedUrl, embedHeight: embedHeight ?? spotifyEmbedHeight(spotifyType) }
+      const data = (await res.json()) as GenericOEmbed
+      const title = typeof data.title === 'string' ? data.title.trim() : ''
+      const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
+      return {
+        provider,
+        title: title || undefined,
+        thumbUrl: thumbUrl || undefined,
+        embedUrl,
+        embedHeight: embedHeight ?? spotifyEmbedHeight(spotifyType)
+      }
+    } catch {
+      return { provider, embedUrl, embedHeight: embedHeight ?? spotifyEmbedHeight(spotifyType) }
+    }
+  }
+
+  if (provider === 'apple') {
+    const { embedUrl, embedHeight } = appleEmbedUrl(url)
+    try {
+      const res = await fetch(`https://embed.music.apple.com/oembed?url=${encodeURIComponent(url)}`)
+      if (!res.ok) return { provider, embedUrl, embedHeight }
+      const data = (await res.json()) as GenericOEmbed
+      const title = typeof data.title === 'string' ? data.title.trim() : ''
+      const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
+      return {
+        provider,
+        title: title || undefined,
+        thumbUrl: thumbUrl || undefined,
+        embedUrl,
+        embedHeight
+      }
+    } catch {
+      return { provider, embedUrl, embedHeight }
+    }
+  }
+
+  return { provider }
 }
 
 function findUser(doc: Doc, username: string): User | undefined {
@@ -254,22 +388,27 @@ function render(): void {
                     return filtered.map(
                       (p) => {
                         const key = playlistKey(p)
-                        const videoId = p.videoId || extractYouTubeVideoId(p.url) || ''
+                        const provider = p.provider || (p.videoId || extractYouTubeVideoId(p.url) ? 'youtube' : 'link')
+                        const videoId = provider === 'youtube' ? (p.videoId || extractYouTubeVideoId(p.url) || '') : ''
+                        const embedUrl =
+                          p.embedUrl ||
+                          (videoId ? `https://www.youtube-nocookie.com/embed/${esc(videoId)}?rel=0&modestbranding=1` : '')
+                        const embedHeight = typeof p.embedHeight === 'number' ? p.embedHeight : undefined
                         const expanded = state.expandedKey === key
                         return `
                         <div class="item">
                           ${p.thumbUrl ? `<img class="thumb" src="${esc(p.thumbUrl)}" alt="" loading="lazy" />` : `<div class="thumb thumbFallback"></div>`}
                           <div class="itemMain">
-                            <div class="itemTitle">${esc(p.title || parseYouTubeLabel(p.url))}</div>
+                            <div class="itemTitle">${esc(p.title || parseLinkLabel(p.url))}</div>
                             <div class="itemMeta">
                               <a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a>
                             </div>
                             ${p.note ? `<div class="itemMeta">${esc(p.note)}</div>` : ''}
-                            ${expanded && videoId ? `
-                              <div class="embedWrap">
+                            ${expanded && embedUrl ? `
+                              <div class="embedWrap ${provider === 'youtube' ? 'embedYouTube' : 'embedOther'}" ${embedHeight ? `style="height: ${embedHeight}px"` : ''}>
                                 <iframe
-                                  src="https://www.youtube-nocookie.com/embed/${esc(videoId)}?rel=0&modestbranding=1"
-                                  title="YouTube video player"
+                                  src="${embedUrl}"
+                                  title="Embedded player"
                                   loading="lazy"
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                   allowfullscreen
@@ -279,7 +418,7 @@ function render(): void {
                             <div class="itemMeta">Added ${esc(new Date(p.addedAt).toLocaleString())}</div>
                           </div>
                           <div class="row itemActions">
-                            ${videoId ? `<button class="btn" data-action="toggle-embed" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>${expanded ? 'Hide' : 'Watch'}</button>` : ''}
+                            ${embedUrl ? `<button class="btn" data-action="toggle-embed" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>${expanded ? 'Hide' : provider === 'youtube' ? 'Watch' : 'Play'}</button>` : ''}
                             ${state.confirmDeleteKey === key ? `
                               <button class="btn btnDanger" data-action="confirm-remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Confirm</button>
                               <button class="btn" data-action="cancel-remove" ${state.loading ? 'disabled' : ''}>Cancel</button>
@@ -323,8 +462,8 @@ function render(): void {
 
               ${session ? `
                 <div>
-                  <label>YouTube playlist link</label>
-                  <input data-field="url" placeholder="https://www.youtube.com/watch?...&list=..." />
+                  <label>Link</label>
+                  <input data-field="url" placeholder="YouTube / Spotify / Apple Music..." />
                   <div style="height: 10px"></div>
                   <label>Note (optional)</label>
                   <input data-field="note" placeholder="Pressing from 1977, thrift find…" />
@@ -412,20 +551,23 @@ appEl.addEventListener('click', (e) => {
 
     if (!state.session) return
     if (!url) {
-      showToast('Paste a YouTube link')
+      showToast('Paste a link')
       return
     }
 
     state.loading = true
     render()
 
-    void fetchYouTubeMeta(url)
+    void fetchLinkMeta(url)
       .then((meta) => {
         const playlist: Playlist = {
           url,
+          provider: meta.provider,
           title: meta.title,
           thumbUrl: meta.thumbUrl,
           videoId: meta.videoId,
+          embedUrl: meta.embedUrl,
+          embedHeight: meta.embedHeight,
           note: note || undefined,
           addedAt: new Date().toISOString()
         }

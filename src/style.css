@@ -639,7 +639,6 @@ input:focus {
 
 .embedWrap {
   width: 100%;
-  aspect-ratio: 16 / 9;
   margin-top: 16px;
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -647,6 +646,14 @@ input:focus {
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-lg);
   animation: slideDown 0.4s var(--ease-out);
+}
+
+.embedWrap.embedYouTube {
+  aspect-ratio: 16 / 9;
+}
+
+.embedWrap.embedOther {
+  height: 152px;
 }
 
 @keyframes slideDown {
