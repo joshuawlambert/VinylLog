@@ -530,8 +530,14 @@ input:focus {
 
 @media (min-width: 620px) {
   .item {
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
     padding: 20px;
+  }
+
+  .embedRow {
+    grid-column: 1 / -1;
   }
 }
 
@@ -646,6 +652,11 @@ input:focus {
   border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-lg);
   animation: slideDown 0.4s var(--ease-out);
+}
+
+.embedRow {
+  width: 100%;
+  flex: 0 0 100%;
 }
 
 .embedWrap.embedYouTube {

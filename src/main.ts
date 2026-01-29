@@ -90,7 +90,7 @@ function parseLinkLabel(url: string): string {
     const host = u.hostname.replace(/^www\./, '')
     if (host.endsWith('youtube.com') || host === 'youtu.be') return parseYouTubeLabel(url)
     if (host === 'open.spotify.com') return 'Spotify'
-    if (host.endsWith('music.apple.com') || host === 'music.apple.com') return 'Apple Music'
+    if (host.endsWith('music.apple.com')) return 'Apple Music'
     return host
   } catch {
     return 'Link'
@@ -151,6 +151,7 @@ async function fetchYouTubeMeta(url: string): Promise<{ title?: string; thumbUrl
 type GenericOEmbed = {
   title?: string
   thumbnail_url?: string
+  html?: string
 }
 
 function detectProvider(url: string): { provider: 'youtube' | 'spotify' | 'apple' | 'link'; spotifyType?: string } {
@@ -164,10 +165,27 @@ function detectProvider(url: string): { provider: 'youtube' | 'spotify' | 'apple
       const t = parts[0]
       return { provider: 'spotify', spotifyType: t }
     }
-    if (host === 'music.apple.com') return { provider: 'apple' }
+    if (host.endsWith('music.apple.com')) return { provider: 'apple' }
     return { provider: 'link' }
   } catch {
     return { provider: 'link' }
+  }
+}
+
+function parseOEmbedIframe(html: string | undefined): { src?: string; height?: number } {
+  if (!html) return {}
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    const iframe = doc.querySelector('iframe')
+    const src = iframe?.getAttribute('src') || undefined
+    const heightStr = iframe?.getAttribute('height') || ''
+    const height = heightStr ? Number.parseInt(heightStr, 10) : NaN
+    return {
+      src,
+      height: Number.isFinite(height) ? height : undefined
+    }
+  } catch {
+    return {}
   }
 }
 
@@ -234,12 +252,13 @@ async function fetchLinkMeta(url: string): Promise<{
       const data = (await res.json()) as GenericOEmbed
       const title = typeof data.title === 'string' ? data.title.trim() : ''
       const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
+      const oembed = parseOEmbedIframe(data.html)
       return {
         provider,
         title: title || undefined,
         thumbUrl: thumbUrl || undefined,
-        embedUrl,
-        embedHeight: embedHeight ?? spotifyEmbedHeight(spotifyType)
+        embedUrl: oembed.src || embedUrl,
+        embedHeight: oembed.height || embedHeight || spotifyEmbedHeight(spotifyType)
       }
     } catch {
       return { provider, embedUrl, embedHeight: embedHeight ?? spotifyEmbedHeight(spotifyType) }
@@ -254,12 +273,13 @@ async function fetchLinkMeta(url: string): Promise<{
       const data = (await res.json()) as GenericOEmbed
       const title = typeof data.title === 'string' ? data.title.trim() : ''
       const thumbUrl = typeof data.thumbnail_url === 'string' ? data.thumbnail_url.trim() : ''
+      const oembed = parseOEmbedIframe(data.html)
       return {
         provider,
         title: title || undefined,
         thumbUrl: thumbUrl || undefined,
-        embedUrl,
-        embedHeight
+        embedUrl: oembed.src || embedUrl,
+        embedHeight: oembed.height || embedHeight
       }
     } catch {
       return { provider, embedUrl, embedHeight }
@@ -390,13 +410,14 @@ function render(): void {
                         const key = playlistKey(p)
                         const provider = p.provider || (p.videoId || extractYouTubeVideoId(p.url) ? 'youtube' : 'link')
                         const videoId = provider === 'youtube' ? (p.videoId || extractYouTubeVideoId(p.url) || '') : ''
-                        const embedUrl =
-                          p.embedUrl ||
-                          (videoId ? `https://www.youtube-nocookie.com/embed/${esc(videoId)}?rel=0&modestbranding=1` : '')
+                        const youtubeEmbedUrl = videoId
+                          ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&modestbranding=1`
+                          : ''
+                        const embedUrl = p.embedUrl || youtubeEmbedUrl
                         const embedHeight = typeof p.embedHeight === 'number' ? p.embedHeight : undefined
                         const expanded = state.expandedKey === key
                         return `
-                        <div class="item">
+                        <div class="item" data-provider="${esc(provider)}">
                           ${p.thumbUrl ? `<img class="thumb" src="${esc(p.thumbUrl)}" alt="" loading="lazy" />` : `<div class="thumb thumbFallback"></div>`}
                           <div class="itemMain">
                             <div class="itemTitle">${esc(p.title || parseLinkLabel(p.url))}</div>
@@ -404,17 +425,6 @@ function render(): void {
                               <a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a>
                             </div>
                             ${p.note ? `<div class="itemMeta">${esc(p.note)}</div>` : ''}
-                            ${expanded && embedUrl ? `
-                              <div class="embedWrap ${provider === 'youtube' ? 'embedYouTube' : 'embedOther'}" ${embedHeight ? `style="height: ${embedHeight}px"` : ''}>
-                                <iframe
-                                  src="${embedUrl}"
-                                  title="Embedded player"
-                                  loading="lazy"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                  allowfullscreen
-                                ></iframe>
-                              </div>
-                            ` : ''}
                             <div class="itemMeta">Added ${esc(new Date(p.addedAt).toLocaleString())}</div>
                           </div>
                           <div class="row itemActions">
@@ -426,6 +436,19 @@ function render(): void {
                               <button class="btn btnDanger" data-action="remove" data-added-at="${esc(p.addedAt)}" data-url="${esc(p.url)}" ${state.loading ? 'disabled' : ''}>Remove</button>
                             `}
                           </div>
+                          ${expanded && embedUrl ? `
+                            <div class="embedRow">
+                              <div class="embedWrap ${provider === 'youtube' ? 'embedYouTube' : 'embedOther'}" ${embedHeight ? `style="height: ${embedHeight}px"` : ''}>
+                                <iframe
+                                  src="${esc(embedUrl)}"
+                                  title="Embedded player"
+                                  loading="lazy"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                  allowfullscreen
+                                ></iframe>
+                              </div>
+                            </div>
+                          ` : ''}
                         </div>
                       `
                       }
