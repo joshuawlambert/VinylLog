@@ -539,8 +539,15 @@ appEl.addEventListener('click', (e) => {
 appEl.addEventListener('input', (e) => {
   const target = e.target as HTMLInputElement | null
   if (target?.getAttribute('data-field') === 'search') {
+    const cursorPos = target.selectionStart
     state.searchQuery = target.value
     render()
+    // Restore focus and cursor position after render
+    const searchInput = appEl.querySelector<HTMLInputElement>('input[data-field="search"]')
+    if (searchInput) {
+      searchInput.focus()
+      searchInput.setSelectionRange(cursorPos, cursorPos)
+    }
   }
 })
 
