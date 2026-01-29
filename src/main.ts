@@ -211,7 +211,6 @@ function render(): void {
         <div class="panelInner">
           <div class="grid">
             <div>
-              <div class="kicker">Data lives in JSONBin. This app just reads/writes one JSON document.</div>
               <div class="h2">Your Playlists</div>
 
               ${state.error ? `<div class="err">${esc(state.error)}</div><div class="hr"></div>` : ''}
@@ -302,10 +301,10 @@ function render(): void {
             </div>
 
             <div>
-              <div class="h2">Sign in / Add</div>
+              <div class="h2">${session ? 'Add' : 'Sign In'}</div>
 
               ${!doc && !state.loading ? `
-                <div class="muted">Couldn’t load JSONBin yet. Check your ` + '`VITE_JSONBIN_BIN_ID`' + ` / ` + '`VITE_JSONBIN_MASTER_KEY`' + ` and try Refresh.</div>
+                <div class="muted">Couldn't load data. Try Refresh.</div>
               ` : ''}
 
               ${!session ? `
@@ -334,16 +333,8 @@ function render(): void {
                     <button class="btn btnPrimary" data-action="add" ${state.loading ? 'disabled' : ''}>Add to my list</button>
                     <button class="btn" data-action="export" ${state.loading ? 'disabled' : ''}>Export JSON</button>
                   </div>
-                  <div style="height: 10px"></div>
-                  <div class="muted">Adds/edits write back to JSONBin using the same pin you signed in with.</div>
                 </div>
               ` : ''}
-
-              <div class="hr"></div>
-              <div class="kicker">About</div>
-              <div class="muted">
-                This is intentionally simple: username + 4-digit pin stored in the JSON document.
-              </div>
             </div>
           </div>
         </div>
